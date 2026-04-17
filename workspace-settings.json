@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "allow": ["Write", "Edit", "Read", "Bash", "Grep", "Glob"],
+    "defaultMode": "dontAsk"
+  }
+}

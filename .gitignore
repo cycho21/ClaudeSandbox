@@ -1,0 +1,9 @@
+# Local Claude settings (may contain tokens or personal config)
+.claude/settings.local.json
+
+# Corporate CA bundle — add your own ca-bundle.pem if needed
+# ca-bundle.pem
+
+# OS cruft
+.DS_Store
+Thumbs.db
