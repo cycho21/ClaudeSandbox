@@ -79,6 +79,11 @@ else
     echo ">>> $PREFIX is already in PATH"
 fi
 
+# Pre-create .claude/projects so the container's node user can write to them
+CLAUDE_DIR="$(dirname "$REPO_DIR")"
+mkdir -p "$CLAUDE_DIR/projects"
+echo ">>> Created $CLAUDE_DIR/projects"
+
 # Docker check
 if ! command -v docker &>/dev/null; then
     echo ""

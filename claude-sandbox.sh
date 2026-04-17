@@ -63,7 +63,8 @@ native_to_container() {
 }
 
 # ── Config directories ──────────────────────────────────────────────────────
-CLAUDE_DIR="$HOME/.claude"
+# SANDBOX_DIR is always inside .claude/sandbox, so derive .claude from parent
+CLAUDE_DIR="$(dirname "$SANDBOX_DIR")"
 if [[ "$PLATFORM" == "gitbash" ]]; then
     GCLOUD_DIR="$HOME/AppData/Roaming/gcloud"
 else
@@ -128,6 +129,7 @@ DOCKER_ARGS=(
     -v "${CLAUDE_MOUNT}:/home/node/.claude"
     -v "${PROJECT_MOUNT}:${PROJECT_CONTAINER}"
     -e "HOST_PLATFORM=${PLATFORM}"
+    -e "NODE_TLS_REJECT_UNAUTHORIZED=0"
     -e "CLAUDE_CODE_USE_VERTEX=1"
     -e "ANTHROPIC_VERTEX_PROJECT_ID=r-uv-admin"
     -e "CLOUD_ML_REGION=global"
@@ -150,7 +152,6 @@ fi
 if [[ -f "$SANDBOX_DIR/ca-bundle.pem" ]]; then
     DOCKER_ARGS+=(-v "${SANDBOX_MOUNT}/ca-bundle.pem:/etc/ssl/certs/ca-bundle.pem:ro")
     DOCKER_ARGS+=(-e "NODE_EXTRA_CA_CERTS=/etc/ssl/certs/ca-bundle.pem")
-    DOCKER_ARGS+=(-e "NODE_TLS_REJECT_UNAUTHORIZED=0")
 fi
 
 # Pass through API key if set (alternative to Vertex AI)
