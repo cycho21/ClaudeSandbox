@@ -80,8 +80,8 @@ Write-Host "    Mount at  : $ProjectContainer"
 Write-Host "    Container : $ContainerName"
 Write-Host ""
 
-# Remove stale container
-docker rm -f $ContainerName 2>$null | Out-Null
+# Remove stale container (ignore "no such container" error)
+docker rm -f $ContainerName *>&1 | Out-Null
 
 # ── Assemble docker args ─────────────────────────────────────────────────────
 $ProtectHarness = if ($env:CLAUDE_SANDBOX_PROTECT_HARNESS) { $env:CLAUDE_SANDBOX_PROTECT_HARNESS } else { "1" }
