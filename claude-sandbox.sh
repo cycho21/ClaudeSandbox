@@ -171,7 +171,14 @@ fi
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 if [[ "$PLATFORM" == "gitbash" ]]; then
-    MSYS_NO_PATHCONV=1 docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
+    # winpty provides proper PTY allocation in Git Bash.
+    # MSYS2_ARG_CONV_EXCL=* prevents MSYS from converting Linux paths (e.g.
+    # /d/harness → D:/harness) when passing args through winpty to docker.
+    if command -v winpty &>/dev/null; then
+        MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' winpty docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
+    else
+        MSYS_NO_PATHCONV=1 docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
+    fi
 else
     docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
 fi
