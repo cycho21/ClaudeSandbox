@@ -171,14 +171,7 @@ fi
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 if [[ "$PLATFORM" == "gitbash" ]]; then
-    # winpty is required in Git Bash for interactive Docker TTY allocation.
-    if command -v winpty &>/dev/null; then
-        MSYS_NO_PATHCONV=1 winpty docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
-    else
-        echo "Warning: winpty not found. Interactive mode may not work in Git Bash."
-        echo "         Install Git for Windows (includes winpty) or run from WSL."
-        MSYS_NO_PATHCONV=1 docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
-    fi
+    MSYS_NO_PATHCONV=1 docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
 else
     docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
 fi
