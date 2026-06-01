@@ -102,6 +102,15 @@ PY
             chown -R node:node "$WORK_DIR/.harness/proposal" 2>/dev/null || true
             chmod -R u+rwX,go+rX "$WORK_DIR/.harness/proposal" 2>/dev/null || true
         fi
+
+        # Gate-owned runtime tools that must not be modified by node.
+        # node can read/execute these (for diagnostics) but cannot write.
+        for pi_dir in \
+            "$WORK_DIR/.pi/dpaa" \
+            "$WORK_DIR/.pi/sbadr"; do
+            [ -d "$pi_dir" ] && chown -R gate:node "$pi_dir" 2>/dev/null || true
+            [ -d "$pi_dir" ] && chmod -R u+rwX,g+rX,o-rwx "$pi_dir" 2>/dev/null || true
+        done
     fi
 
     exec gosu node "$0" "$@"

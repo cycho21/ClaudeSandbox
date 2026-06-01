@@ -44,6 +44,9 @@ RUN printf '%s\n' \
     'export CLAUDE_PROJECT_DIR="$PROJECT_DIR"' \
     '[ -n "$SESSION_ID" ] && export CLAUDE_SESSION_ID="$SESSION_ID"' \
     'unset NODE_OPTIONS npm_config_prefix npm_config_globalconfig npm_config_userconfig' \
+    'unset PYTHONPATH PYTHONHOME PYTHONSTARTUP PYTHONUSERBASE' \
+    'unset LD_PRELOAD LD_LIBRARY_PATH DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH' \
+    'unset PERL5LIB RUBYLIB RUBYOPT GEM_PATH GEM_HOME' \
     'cd "$PROJECT_DIR"' \
     'exec node /opt/harness-workflow-gate/workflow-gate.cjs "$@"' \
     > /usr/local/bin/workflow-gate-run \

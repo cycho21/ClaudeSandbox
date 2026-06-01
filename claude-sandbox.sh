@@ -100,6 +100,8 @@ SANDBOX_MOUNT="$(native_to_mount "$SANDBOX_DIR")"
 CLAUDE_MOUNT="$(native_to_mount "$CLAUDE_DIR")"
 PROJECT_MOUNT="$(native_to_mount "$PROJECT")"
 PROJECT_CONTAINER="$(native_to_container "$PROJECT")"
+# Normalize double leading slash produced by MSYS path conversion in Git Bash
+[[ "$PROJECT_CONTAINER" == //* ]] && PROJECT_CONTAINER="${PROJECT_CONTAINER:1}"
 CONTAINER_NAME="claude-sandbox-$(printf '%s' "$PROJECT_MOUNT" | md5sum | cut -d' ' -f1 | head -c 8)"
 
 # ── Docker check ─────────────────────────────────────────────────────────────
@@ -169,7 +171,14 @@ fi
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 if [[ "$PLATFORM" == "gitbash" ]]; then
-    MSYS_NO_PATHCONV=1 docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
+    # winpty is required in Git Bash for interactive Docker TTY allocation.
+    if command -v winpty &>/dev/null; then
+        MSYS_NO_PATHCONV=1 winpty docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
+    else
+        echo "Warning: winpty not found. Interactive mode may not work in Git Bash."
+        echo "         Install Git for Windows (includes winpty) or run from WSL."
+        MSYS_NO_PATHCONV=1 docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
+    fi
 else
     docker run "${DOCKER_ARGS[@]}" "$IMAGE" "${CLAUDE_FLAGS[@]}"
 fi
