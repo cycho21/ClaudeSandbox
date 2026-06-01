@@ -6,8 +6,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $RepoDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ScriptPath = Join-Path $RepoDir "claude-sandbox.sh"
-$InstallPath = Join-Path $Prefix "claude-sandbox.cmd"
+$PS1ScriptPath = Join-Path $RepoDir "claude-sandbox.ps1"
+$InstallPath    = Join-Path $Prefix "claude-sandbox.cmd"
 
 Write-Host "=== Claude Sandbox Installer ===" -ForegroundColor Cyan
 Write-Host "    Platform  : Windows (PowerShell)"
@@ -15,52 +15,27 @@ Write-Host "    Repo      : $RepoDir"
 Write-Host "    Install -> : $InstallPath"
 Write-Host ""
 
-if (-not (Test-Path $ScriptPath)) {
-    Write-Error "claude-sandbox.sh not found in $RepoDir"
+if (-not (Test-Path $PS1ScriptPath)) {
+    Write-Error "claude-sandbox.ps1 not found in $RepoDir"
     exit 1
 }
 
 # Create install directory
 New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
 
-# Convert Windows path to Git Bash style: C:\foo\bar -> /c/foo/bar
-$GitBashScript = $ScriptPath -replace '\\', '/'
-if ($GitBashScript -match '^([A-Za-z]):(.*)') {
-    $GitBashScript = '/' + $Matches[1].ToLower() + $Matches[2]
-}
-
-# Find Git Bash explicitly to avoid WSL bash taking precedence
-$BashExe = $null
-$GitBashCandidates = @(
-    "C:\Program Files\Git\bin\bash.exe",
-    "C:\Program Files (x86)\Git\bin\bash.exe"
-)
-foreach ($candidate in $GitBashCandidates) {
-    if (Test-Path $candidate) { $BashExe = $candidate; break }
-}
-if (-not $BashExe) {
-    $bashCmd = Get-Command bash -ErrorAction SilentlyContinue
-    if ($bashCmd -and $bashCmd.Source -like "*Git*") { $BashExe = $bashCmd.Source }
-}
-if (-not $BashExe) { $BashExe = "bash" }
-
-Write-Host "    Bash      : $BashExe"
-
-# Create .cmd wrapper that invokes bash (Git Bash / WSL)
+# Create .cmd wrapper — calls PowerShell directly (no bash intermediary, so Docker PTY works)
 @"
 @echo off
-"$BashExe" "$GitBashScript" %*
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File "$PS1ScriptPath" %*
 "@ | Out-File -FilePath $InstallPath -Encoding ASCII
 
 Write-Host ">>> Installed: $InstallPath"
 
-# Create .bat wrapper — PowerShell resolves .bat before .cmd (per PATHEXT order),
-# so both must point to the same script.
+# Create .bat wrapper — PATHEXT resolves .bat before .cmd, both must be present
 $InstallPathBat = Join-Path $Prefix "claude-sandbox.bat"
 @"
 @echo off
-set MSYS_NO_PATHCONV=1
-"$BashExe" "$GitBashScript" %*
+powershell.exe -ExecutionPolicy Bypass -NoProfile -File "$PS1ScriptPath" %*
 "@ | Out-File -FilePath $InstallPathBat -Encoding ASCII
 
 Write-Host ">>> Installed: $InstallPathBat"
@@ -79,13 +54,6 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host ""
     Write-Host "!!! Docker not found. Install Docker Desktop:" -ForegroundColor Yellow
     Write-Host "    https://www.docker.com/products/docker-desktop/"
-}
-
-# Check Git Bash / bash availability
-if (-not (Get-Command bash -ErrorAction SilentlyContinue)) {
-    Write-Host ""
-    Write-Host "!!! bash not found. Install Git for Windows (includes Git Bash):" -ForegroundColor Yellow
-    Write-Host "    https://git-scm.com/download/win"
 }
 
 Write-Host ""
