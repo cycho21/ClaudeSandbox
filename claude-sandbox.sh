@@ -63,8 +63,15 @@ native_to_container() {
 }
 
 # ── Config directories ──────────────────────────────────────────────────────
-# SANDBOX_DIR is always inside .claude/sandbox, so derive .claude from parent
-CLAUDE_DIR="$(dirname "$SANDBOX_DIR")"
+# When installed under ~/.claude/sandbox, use that parent. Standalone clones use ~/.claude
+# unless CLAUDE_SANDBOX_CLAUDE_DIR is explicitly set.
+SANDBOX_PARENT="$(dirname "$SANDBOX_DIR")"
+if [[ "$(basename "$SANDBOX_PARENT")" == ".claude" ]]; then
+    CLAUDE_DIR="$SANDBOX_PARENT"
+else
+    CLAUDE_DIR="${CLAUDE_SANDBOX_CLAUDE_DIR:-$HOME/.claude}"
+fi
+mkdir -p "$CLAUDE_DIR"
 if [[ "$PLATFORM" == "gitbash" ]]; then
     GCLOUD_DIR="$HOME/AppData/Roaming/gcloud"
 else
@@ -133,6 +140,7 @@ DOCKER_ARGS=(
     -e "CLAUDE_CODE_USE_VERTEX=1"
     -e "ANTHROPIC_VERTEX_PROJECT_ID=r-uv-admin"
     -e "CLOUD_ML_REGION=global"
+    -e "CLAUDE_SANDBOX_PROTECT_HARNESS=${CLAUDE_SANDBOX_PROTECT_HARNESS:-1}"
     -w "${PROJECT_CONTAINER}"
 )
 
