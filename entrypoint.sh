@@ -149,7 +149,7 @@ git config --global --add safe.directory "$WORK_DIR"
 # Guard against false-positive matches on Mac/Linux paths like /Users/... or /home/...
 LINUX_PROJ=""
 WIN_PROJ=""
-if [[ "$HOST_PLATFORM" == "gitbash" ]] && [[ "$WORK_DIR" =~ ^/([a-zA-Z])/(.*) ]]; then
+if [[ "$HOST_PLATFORM" == "gitbash" ]] && [[ "$WORK_DIR" =~ ^//?([a-zA-Z])/(.*) ]]; then
     LINUX_SANITIZED=$(echo "$WORK_DIR" | sed 's/[^a-zA-Z0-9]/-/g')
     WIN_SANITIZED=$(echo "${BASH_REMATCH[1]^^}:/${BASH_REMATCH[2]}" | sed 's/[^a-zA-Z0-9]/-/g')
     LINUX_PROJ="${HOME}/.claude/projects/${LINUX_SANITIZED}"

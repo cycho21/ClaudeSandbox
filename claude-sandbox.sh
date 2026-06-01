@@ -41,9 +41,13 @@ native_to_container() {
     local p="$1"
     case "$PLATFORM" in
         gitbash)
-            # C:/foo or /c/foo → /c/foo
+            # Produce //d/path (double-slash) so MSYS treats it as a UNC-like
+            # path and won't convert it to D:/path when passing to docker.
+            # Linux containers treat //path identically to /path.
             if [[ "$p" =~ ^([a-zA-Z]):/(.*) ]]; then
-                echo "/${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+                echo "//${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
+            elif [[ "$p" =~ ^/([a-zA-Z])/(.*) ]]; then
+                echo "//${BASH_REMATCH[1],,}/${BASH_REMATCH[2]}"
             else
                 echo "$p"
             fi
@@ -100,8 +104,6 @@ SANDBOX_MOUNT="$(native_to_mount "$SANDBOX_DIR")"
 CLAUDE_MOUNT="$(native_to_mount "$CLAUDE_DIR")"
 PROJECT_MOUNT="$(native_to_mount "$PROJECT")"
 PROJECT_CONTAINER="$(native_to_container "$PROJECT")"
-# Normalize double leading slash produced by MSYS path conversion in Git Bash
-[[ "$PROJECT_CONTAINER" == //* ]] && PROJECT_CONTAINER="${PROJECT_CONTAINER:1}"
 CONTAINER_NAME="claude-sandbox-$(printf '%s' "$PROJECT_MOUNT" | md5sum | cut -d' ' -f1 | head -c 8)"
 
 # ── Docker check ─────────────────────────────────────────────────────────────
