@@ -37,6 +37,17 @@ bash "$GitBashScript" %*
 
 Write-Host ">>> Installed: $InstallPath"
 
+# Create .bat wrapper — PowerShell resolves .bat before .cmd (per PATHEXT order),
+# so both must point to the same script.
+$InstallPathBat = Join-Path $Prefix "claude-sandbox.bat"
+@"
+@echo off
+set MSYS_NO_PATHCONV=1
+bash "$GitBashScript" %*
+"@ | Out-File -FilePath $InstallPathBat -Encoding ASCII
+
+Write-Host ">>> Installed: $InstallPathBat"
+
 # Add to user PATH if not already there
 $UserPath = [Environment]::GetEnvironmentVariable("PATH", "User")
 if ($UserPath -notlike "*$Prefix*") {
