@@ -29,10 +29,27 @@ if ($GitBashScript -match '^([A-Za-z]):(.*)') {
     $GitBashScript = '/' + $Matches[1].ToLower() + $Matches[2]
 }
 
+# Find Git Bash explicitly to avoid WSL bash taking precedence
+$BashExe = $null
+$GitBashCandidates = @(
+    "C:\Program Files\Git\bin\bash.exe",
+    "C:\Program Files (x86)\Git\bin\bash.exe"
+)
+foreach ($candidate in $GitBashCandidates) {
+    if (Test-Path $candidate) { $BashExe = $candidate; break }
+}
+if (-not $BashExe) {
+    $bashCmd = Get-Command bash -ErrorAction SilentlyContinue
+    if ($bashCmd -and $bashCmd.Source -like "*Git*") { $BashExe = $bashCmd.Source }
+}
+if (-not $BashExe) { $BashExe = "bash" }
+
+Write-Host "    Bash      : $BashExe"
+
 # Create .cmd wrapper that invokes bash (Git Bash / WSL)
 @"
 @echo off
-bash "$GitBashScript" %*
+"$BashExe" "$GitBashScript" %*
 "@ | Out-File -FilePath $InstallPath -Encoding ASCII
 
 Write-Host ">>> Installed: $InstallPath"
@@ -43,7 +60,7 @@ $InstallPathBat = Join-Path $Prefix "claude-sandbox.bat"
 @"
 @echo off
 set MSYS_NO_PATHCONV=1
-bash "$GitBashScript" %*
+"$BashExe" "$GitBashScript" %*
 "@ | Out-File -FilePath $InstallPathBat -Encoding ASCII
 
 Write-Host ">>> Installed: $InstallPathBat"
