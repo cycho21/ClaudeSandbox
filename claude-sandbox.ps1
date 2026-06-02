@@ -137,25 +137,50 @@ if ($env:GITLAB_TOKEN) {
     $DockerArgs += '-e', "GITLAB_TOKEN=$env:GITLAB_TOKEN"
     if ($env:GITLAB_HOST) { $DockerArgs += '-e', "GITLAB_HOST=$env:GITLAB_HOST" }
 } else {
-    # Discover HTTPS remotes in the project, then ask Windows Credential Manager
-    function Get-WinGitCred([string]$RemoteHost) {
+    # Read Git credentials directly from Windows Credential Manager via PInvoke
+    Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class WinCred {
+    [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+    struct CRED {
+        public uint Flags, Type;
+        [MarshalAs(UnmanagedType.LPWStr)] public string TargetName;
+        [MarshalAs(UnmanagedType.LPWStr)] public string Comment;
+        public long LastWritten;
+        public uint BlobSize;
+        public IntPtr Blob;
+        public uint Persist, AttributeCount;
+        public IntPtr Attributes;
+        [MarshalAs(UnmanagedType.LPWStr)] public string TargetAlias;
+        [MarshalAs(UnmanagedType.LPWStr)] public string UserName;
+    }
+    [DllImport("advapi32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern bool CredRead(string target, uint type, int flags, out IntPtr cred);
+    [DllImport("advapi32.dll")]
+    static extern void CredFree(IntPtr cred);
+    public static string[] Get(string target) {
+        IntPtr ptr;
+        if (!CredRead(target, 1, 0, out ptr)) return null;
         try {
-            $tmpIn  = [System.IO.Path]::GetTempFileName()
-            $tmpOut = [System.IO.Path]::GetTempFileName()
-            [System.IO.File]::WriteAllText($tmpIn, "protocol=https`nhost=$RemoteHost`n`n", [System.Text.Encoding]::ASCII)
-            $p = Start-Process -FilePath "git" -ArgumentList "credential","fill" `
-                -RedirectStandardInput $tmpIn -RedirectStandardOutput $tmpOut `
-                -NoNewWindow -Wait -PassThru 2>$null
-            if ($p.ExitCode -eq 0) {
-                $out = Get-Content $tmpOut -Raw
-                if ($out) {
-                    $pass = ($out -split "`n" | Where-Object { $_ -match "^password=" } | Select-Object -First 1) -replace "^password=",""
-                    $user = ($out -split "`n" | Where-Object { $_ -match "^username=" } | Select-Object -First 1) -replace "^username=",""
-                    if ($pass) { return @{ Token = $pass.Trim(); User = $user.Trim() } }
-                }
-            }
-        } catch {}
-        finally { Remove-Item $tmpIn,$tmpOut -ErrorAction SilentlyContinue }
+            var c = Marshal.PtrToStructure<CRED>(ptr);
+            if (c.BlobSize == 0 || c.Blob == IntPtr.Zero) return null;
+            var bytes = new byte[c.BlobSize];
+            Marshal.Copy(c.Blob, bytes, 0, (int)c.BlobSize);
+            return new[] { c.UserName ?? "", Encoding.Unicode.GetString(bytes) };
+        } finally { CredFree(ptr); }
+    }
+}
+'@ 2>$null
+
+    function Get-WinGitCred([string]$RemoteHost) {
+        foreach ($target in @("git:https://$RemoteHost", "https://$RemoteHost")) {
+            try {
+                $r = [WinCred]::Get($target)
+                if ($r -and $r[1]) { return @{ Token = $r[1].Trim(); User = $r[0].Trim() } }
+            } catch {}
+        }
         return $null
     }
 
