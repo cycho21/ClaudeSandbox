@@ -210,6 +210,7 @@ public static class WinCred {
 
             $DockerArgs += '-v', "$(ToDockerMount $tmpGitconfig):/tmp/.gitconfig.host:ro"
             $DockerArgs += '-v', "$(ToDockerMount $tmpGitCreds):/home/node/.git-credentials:ro"
+            $GitConfigMounted = $true
             break
         } else {
             Write-Host "    Auth      : no credential found for $h (set GITLAB_TOKEN manually)"
@@ -218,10 +219,8 @@ public static class WinCred {
 }
 
 # Mount original gitconfig if not already replaced by credential-patched version
-if (-not ($DockerArgs -contains '/tmp/.gitconfig.host:ro')) {
-    if (Test-Path $GitConfig) {
-        $DockerArgs += '-v', "$(ToDockerMount $GitConfig):/tmp/.gitconfig.host:ro"
-    }
+if (-not $GitConfigMounted -and (Test-Path $GitConfig)) {
+    $DockerArgs += '-v', "$(ToDockerMount $GitConfig):/tmp/.gitconfig.host:ro"
 }
 
 $SshDir = "$env:USERPROFILE\.ssh"
