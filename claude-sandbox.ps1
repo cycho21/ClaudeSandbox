@@ -4,7 +4,9 @@
 #   claude-sandbox --resume <session_id>
 #   claude-sandbox --rebuild
 
-$ErrorActionPreference = 'Stop'
+# Do NOT set $ErrorActionPreference = 'Stop' — PowerShell treats any docker
+# stderr (including harmless progress/info messages) as terminating errors.
+# Instead we check $LASTEXITCODE explicitly where it matters.
 
 $IMAGE    = "claude-sandbox"
 $REPO_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -52,7 +54,6 @@ $GcloudDir = "$env:USERPROFILE\AppData\Roaming\gcloud"
 $ProjectMount     = ToDockerMount $ProjectPath
 $ProjectContainer = ToContainerPath $ProjectPath
 $ClaudeMount      = ToDockerMount $ClaudeDir
-$RepoMount        = ToDockerMount $REPO_DIR
 
 # Container name — MD5 of mount path (matches bash script naming)
 $md5   = [System.Security.Cryptography.MD5]::Create()
@@ -62,15 +63,18 @@ $ContainerName = "claude-sandbox-$($hash.Substring(0,8))"
 
 # ── Docker check ─────────────────────────────────────────────────────────────
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
-    Write-Error "Docker is not installed or not on PATH. Install Docker Desktop."
+    Write-Host "Error: Docker is not installed or not on PATH." -ForegroundColor Red
     exit 1
 }
 
 # ── Build image ───────────────────────────────────────────────────────────────
-$imageExists = docker image inspect $IMAGE 2>$null
+docker image inspect $IMAGE *>&1 | Out-Null
+$imageExists = $LASTEXITCODE -eq 0
+
 if ($Rebuild -or -not $imageExists) {
     Write-Host ">>> Building ${IMAGE} image (first time ~5 min)..."
     docker build -t $IMAGE $REPO_DIR
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host ""
 }
 
@@ -80,7 +84,7 @@ Write-Host "    Mount at  : $ProjectContainer"
 Write-Host "    Container : $ContainerName"
 Write-Host ""
 
-# Remove stale container (ignore "no such container" error)
+# Remove stale container (silently ignore "no such container")
 docker rm -f $ContainerName *>&1 | Out-Null
 
 # ── Assemble docker args ─────────────────────────────────────────────────────
@@ -125,3 +129,4 @@ if ($ClaudeFlags.Count -gt 0) { $DockerArgs += $ClaudeFlags }
 
 # ── Launch ────────────────────────────────────────────────────────────────────
 & docker @DockerArgs
+exit $LASTEXITCODE
