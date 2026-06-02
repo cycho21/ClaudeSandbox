@@ -113,6 +113,10 @@ PY
         done
     fi
 
+    # Ensure 'python' resolves to python3 (some images only have python3)
+    command -v python > /dev/null 2>&1 || \
+        ln -sf "$(command -v python3)" /usr/local/bin/python 2>/dev/null || true
+
     exec gosu node "$0" "$@"
 fi
 
@@ -149,6 +153,70 @@ fi
 # Fix git dubious ownership warning for mounted workspace
 WORK_DIR="$(pwd)"
 git config --global --add safe.directory "$WORK_DIR"
+
+# Copy host SSH keys with correct permissions (Windows mounts can't be chmodded)
+if [ -d "/tmp/.ssh.host" ] && [ ! -d "${HOME}/.ssh" ]; then
+    cp -r /tmp/.ssh.host "${HOME}/.ssh"
+    chmod 700 "${HOME}/.ssh"
+    chmod 600 "${HOME}/.ssh"/id_* 2>/dev/null || true
+    chmod 644 "${HOME}/.ssh"/id_*.pub 2>/dev/null || true
+    chmod 644 "${HOME}/.ssh/known_hosts" 2>/dev/null || true
+fi
+
+# Translate Windows-absolute hook paths to portable python -c form.
+# The portable form works on both Windows and Linux, so writing back is safe.
+# Background: sh -c strips backslashes (C:\foo → C:foo), breaking Windows paths on Linux.
+if [ -f "${HOME}/.claude/settings.json" ]; then
+    python3 - "${HOME}/.claude/settings.json" "$HOME" <<'PY'
+import json, sys, re
+path, home = sys.argv[1], sys.argv[2]
+try:
+    data = json.load(open(path, encoding='utf-8'))
+except Exception:
+    sys.exit(0)
+WIN_HOOK = re.compile(
+    r'^(python\d*)\s+[A-Za-z]:[/\\]Users[/\\][^/\\]+[/\\]\.claude[/\\](.+)$',
+    re.IGNORECASE
+)
+def fix(cmd):
+    m = WIN_HOOK.match(cmd)
+    if not m:
+        return cmd
+    rel = m.group(2).replace('\\', '/')
+    return (m.group(1) + " -c \"import os;"
+            "exec(open(os.path.join(os.path.expanduser('~'),'.claude','" + rel + "')).read())\"")
+changed = False
+for ev in (data.get('hooks') or {}).values():
+    for entry in (ev if isinstance(ev, list) else []):
+        for hook in (entry.get('hooks') or []):
+            if 'command' in hook:
+                new = fix(hook['command'])
+                if new != hook['command']:
+                    hook['command'] = new
+                    changed = True
+if changed:
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2)
+        f.write('\n')
+PY
+fi
+
+# Windows GCM (credential.helper=manager) doesn't exist in Linux — replace with store
+_gl_helper=$(git config --global credential.helper 2>/dev/null || true)
+case "$_gl_helper" in
+    *manager*) git config --global credential.helper store ;;
+esac
+unset _gl_helper
+
+# Configure HTTPS credentials when injected from Windows Credential Manager
+if [ -n "$GITLAB_TOKEN" ]; then
+    _gl_host="${GITLAB_HOST:-gitlab.com}"
+    _gl_user="${GITLAB_USER:-oauth2}"
+    git config --global credential.helper store
+    printf "https://%s:%s@%s\n" "$_gl_user" "$GITLAB_TOKEN" "$_gl_host" >> "${HOME}/.git-credentials"
+    chmod 600 "${HOME}/.git-credentials"
+    unset _gl_host _gl_user
+fi
 
 # Sync sessions between docker (linux-sanitized) and native Windows (win-sanitized) dirs
 # Only needed on Git Bash where project paths use Windows drive letters (/c/foo).

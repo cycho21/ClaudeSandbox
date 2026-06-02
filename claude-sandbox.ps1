@@ -12,13 +12,21 @@ $IMAGE    = "claude-sandbox"
 $REPO_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # Manual arg parsing — first non-flag is project path, rest go to claude
-$Rebuild    = $false
-$ProjectArg = $null
+$Rebuild     = $false
+$ProjectArg  = $null
 $ClaudeFlags = @()
+$ConsumeNext = $false   # true when the previous flag takes a positional argument
 
 foreach ($a in $args) {
     if ($a -eq '--rebuild') {
         $Rebuild = $true
+    } elseif ($ConsumeNext) {
+        # This token is an argument to the previous claude flag (e.g. session ID after --resume)
+        $ClaudeFlags += $a
+        $ConsumeNext = $false
+    } elseif ($a -eq '--resume') {
+        $ClaudeFlags += $a
+        $ConsumeNext = $true
     } elseif ($null -eq $ProjectArg -and -not ($a -like '-*')) {
         $ProjectArg = $a
     } else {
@@ -122,6 +130,45 @@ if (Test-Path $CaBundle) {
 
 if ($env:ANTHROPIC_API_KEY) {
     $DockerArgs += '-e', "ANTHROPIC_API_KEY=$env:ANTHROPIC_API_KEY"
+}
+
+# Pass explicit env override, or auto-extract from Windows Credential Manager
+if ($env:GITLAB_TOKEN) {
+    $DockerArgs += '-e', "GITLAB_TOKEN=$env:GITLAB_TOKEN"
+    if ($env:GITLAB_HOST) { $DockerArgs += '-e', "GITLAB_HOST=$env:GITLAB_HOST" }
+} else {
+    # Discover HTTPS remotes in the project, then ask Windows Credential Manager
+    function Get-WinGitCred([string]$RemoteHost) {
+        try {
+            $out = "protocol=https`nhost=$RemoteHost`n" | & git credential fill 2>$null
+            if ($out) {
+                $pass = ($out -split "`n" | Where-Object { $_ -match "^password=" }) -replace "^password=", ""
+                $user = ($out -split "`n" | Where-Object { $_ -match "^username=" }) -replace "^username=", ""
+                if ($pass) { return @{ Token = $pass.Trim(); User = $user.Trim() } }
+            }
+        } catch {}
+        return $null
+    }
+
+    $remoteLines = & git -C $ProjectPath remote -v 2>$null
+    $httpsHosts  = @()
+    foreach ($line in $remoteLines) {
+        if ($line -match 'https://[^/:@\s]*@?([^/:@\s]+)') { $httpsHosts += $Matches[1] }
+    }
+    foreach ($h in ($httpsHosts | Select-Object -Unique)) {
+        $cred = Get-WinGitCred $h
+        if ($cred) {
+            $DockerArgs += '-e', "GITLAB_TOKEN=$($cred.Token)"
+            $DockerArgs += '-e', "GITLAB_HOST=$h"
+            if ($cred.User) { $DockerArgs += '-e', "GITLAB_USER=$($cred.User)" }
+            break
+        }
+    }
+}
+
+$SshDir = "$env:USERPROFILE\.ssh"
+if (Test-Path $SshDir) {
+    $DockerArgs += '-v', "$(ToDockerMount $SshDir):/tmp/.ssh.host:ro"
 }
 
 $DockerArgs += $IMAGE
