@@ -131,8 +131,15 @@ if [ -f "/tmp/.gitconfig.host" ] && [ ! -f "${HOME}/.gitconfig" ]; then
     cp /tmp/.gitconfig.host "${HOME}/.gitconfig"
 fi
 
-# Fix Windows CRLF line endings in hook scripts
-find "${HOME}/.claude" -type f -name "*.sh" -exec dos2unix -q {} \; 2>/dev/null || true
+# Fix Windows CRLF line endings in hook scripts.
+# Scoped to dirs that actually contain shell scripts — avoids traversing plugins/
+# or projects/ (100k+ files) through Docker's WSL2 virtual filesystem.
+for _d in hooks commands sandbox skills; do
+    [ -d "${HOME}/.claude/${_d}" ] && \
+        find "${HOME}/.claude/${_d}" -type f -name "*.sh" \
+            -exec dos2unix -q {} \; 2>/dev/null || true
+done
+unset _d
 
 # Install Python dependencies if requirements.txt exists
 if [ -f "${HOME}/.claude/llm-wiki/scripts/requirements.txt" ]; then
