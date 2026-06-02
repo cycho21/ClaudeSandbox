@@ -140,13 +140,22 @@ if ($env:GITLAB_TOKEN) {
     # Discover HTTPS remotes in the project, then ask Windows Credential Manager
     function Get-WinGitCred([string]$RemoteHost) {
         try {
-            $out = "protocol=https`nhost=$RemoteHost`n" | & git credential fill 2>$null
-            if ($out) {
-                $pass = ($out -split "`n" | Where-Object { $_ -match "^password=" }) -replace "^password=", ""
-                $user = ($out -split "`n" | Where-Object { $_ -match "^username=" }) -replace "^username=", ""
-                if ($pass) { return @{ Token = $pass.Trim(); User = $user.Trim() } }
+            $tmpIn  = [System.IO.Path]::GetTempFileName()
+            $tmpOut = [System.IO.Path]::GetTempFileName()
+            [System.IO.File]::WriteAllText($tmpIn, "protocol=https`nhost=$RemoteHost`n`n", [System.Text.Encoding]::ASCII)
+            $p = Start-Process -FilePath "git" -ArgumentList "credential","fill" `
+                -RedirectStandardInput $tmpIn -RedirectStandardOutput $tmpOut `
+                -NoNewWindow -Wait -PassThru 2>$null
+            if ($p.ExitCode -eq 0) {
+                $out = Get-Content $tmpOut -Raw
+                if ($out) {
+                    $pass = ($out -split "`n" | Where-Object { $_ -match "^password=" } | Select-Object -First 1) -replace "^password=",""
+                    $user = ($out -split "`n" | Where-Object { $_ -match "^username=" } | Select-Object -First 1) -replace "^username=",""
+                    if ($pass) { return @{ Token = $pass.Trim(); User = $user.Trim() } }
+                }
             }
         } catch {}
+        finally { Remove-Item $tmpIn,$tmpOut -ErrorAction SilentlyContinue }
         return $null
     }
 
@@ -155,13 +164,17 @@ if ($env:GITLAB_TOKEN) {
     foreach ($line in $remoteLines) {
         if ($line -match 'https://(?:[^@]+@)?([^/:@\s]+)') { $httpsHosts += $Matches[1] }
     }
+    Write-Host "    GitLab    : $(if ($httpsHosts) { $httpsHosts -join ', ' } else { '(no HTTPS remotes found)' })"
     foreach ($h in ($httpsHosts | Select-Object -Unique)) {
         $cred = Get-WinGitCred $h
         if ($cred) {
+            Write-Host "    Auth      : token injected for $h"
             $DockerArgs += '-e', "GITLAB_TOKEN=$($cred.Token)"
             $DockerArgs += '-e', "GITLAB_HOST=$h"
             if ($cred.User) { $DockerArgs += '-e', "GITLAB_USER=$($cred.User)" }
             break
+        } else {
+            Write-Host "    Auth      : no credential found for $h (set GITLAB_TOKEN manually)"
         }
     }
 }
