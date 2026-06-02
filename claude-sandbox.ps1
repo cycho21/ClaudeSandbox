@@ -118,9 +118,6 @@ if (Test-Path $GcloudDir) {
 }
 
 $GitConfig = "$env:USERPROFILE\.gitconfig"
-if (Test-Path $GitConfig) {
-    $DockerArgs += '-v', "$(ToDockerMount $GitConfig):/tmp/.gitconfig.host:ro"
-}
 
 $CaBundle = Join-Path $REPO_DIR "ca-bundle.pem"
 if (Test-Path $CaBundle) {
@@ -194,13 +191,36 @@ public static class WinCred {
         $cred = Get-WinGitCred $h
         if ($cred) {
             Write-Host "    Auth      : token injected for $h"
-            $DockerArgs += '-e', "GITLAB_TOKEN=$($cred.Token)"
-            $DockerArgs += '-e', "GITLAB_HOST=$h"
-            if ($cred.User) { $DockerArgs += '-e', "GITLAB_USER=$($cred.User)" }
+
+            # Patch gitconfig: replace Windows GCM helper with store
+            $gcContent = if (Test-Path $GitConfig) { Get-Content $GitConfig -Raw } else { "" }
+            $gcPatched  = $gcContent -replace '(?m)([ \t]*helper[ \t]*=[ \t]*)manager\S*', '${1}store'
+            if ($gcPatched -notmatch '(?m)^\s*helper\s*=\s*store') {
+                $gcPatched += "`n[credential]`n`thelper = store`n"
+            }
+            $tmpGitconfig = "$env:TEMP\.sandbox-gitconfig"
+            [System.IO.File]::WriteAllText($tmpGitconfig, $gcPatched, [System.Text.Encoding]::UTF8)
+
+            # Write git-credentials file
+            $gitCredUser = if ($cred.User) { $cred.User } else { "oauth2" }
+            $tmpGitCreds = "$env:TEMP\.sandbox-git-credentials"
+            [System.IO.File]::WriteAllText($tmpGitCreds,
+                "https://${gitCredUser}:$($cred.Token)@${h}`n",
+                [System.Text.Encoding]::ASCII)
+
+            $DockerArgs += '-v', "$(ToDockerMount $tmpGitconfig):/tmp/.gitconfig.host:ro"
+            $DockerArgs += '-v', "$(ToDockerMount $tmpGitCreds):/home/node/.git-credentials:ro"
             break
         } else {
             Write-Host "    Auth      : no credential found for $h (set GITLAB_TOKEN manually)"
         }
+    }
+}
+
+# Mount original gitconfig if not already replaced by credential-patched version
+if (-not ($DockerArgs -contains '/tmp/.gitconfig.host:ro')) {
+    if (Test-Path $GitConfig) {
+        $DockerArgs += '-v', "$(ToDockerMount $GitConfig):/tmp/.gitconfig.host:ro"
     }
 }
 
