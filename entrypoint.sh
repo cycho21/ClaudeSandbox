@@ -183,7 +183,7 @@ def fix(cmd):
     if not m:
         return cmd
     rel = m.group(2).replace('\\', '/')
-    return (m.group(1) + " -c \"import os;"
+    return ("python3 -c \"import os;"
             "exec(open(os.path.join(os.path.expanduser('~'),'.claude','" + rel + "')).read())\"")
 changed = False
 for ev in (data.get('hooks') or {}).values():
