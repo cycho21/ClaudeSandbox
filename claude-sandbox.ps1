@@ -153,7 +153,7 @@ if ($env:GITLAB_TOKEN) {
     $remoteLines = & git -C $ProjectPath remote -v 2>$null
     $httpsHosts  = @()
     foreach ($line in $remoteLines) {
-        if ($line -match 'https://[^/:@\s]*@?([^/:@\s]+)') { $httpsHosts += $Matches[1] }
+        if ($line -match 'https://(?:[^@]+@)?([^/:@\s]+)') { $httpsHosts += $Matches[1] }
     }
     foreach ($h in ($httpsHosts | Select-Object -Unique)) {
         $cred = Get-WinGitCred $h
